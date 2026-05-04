@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+plugin_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=../lib/utils.bash
+. "${plugin_dir}/../lib/utils.bash"
+
+download() {
+  local -r install_type="$1"
+  local -r download_version="$2"
+  local -r download_path="$3"
+
+  if [[ "$install_type" != 'version' ]]; then
+    fail "plugin supports release installs only"
+  fi
+
+  local -r arch=$(uname -m | tr '[:upper:]' '[:lower:]')
+  local -r kernel=$(uname -s | tr '[:upper:]' '[:lower:]')
+  local -r release_tag=$(resolve_release_tag "$download_version")
+
+  local -r -a required_tools=('curl' 'tar')
+  for tool in "${required_tools[@]}"; do
+    if ! type "$tool" &>/dev/null; then
+      fail "$tool not found"
+    fi
+  done
+
+  local asset
+  case "${arch}-${kernel}" in
+    x86_64-linux)
+      asset='nvim-linux-x86_64.tar.gz'
+      ;;
+    *)
+      fail "neovim-releases only publishes Linux x86_64 tarballs; unsupported platform: ${arch}-${kernel}"
+      ;;
+  esac
+
+  (
+    local -r tarball="${download_path}/${asset}"
+    local -r url="${GH_REPO}/releases/download/${release_tag}/${asset}"
+
+    [[ -d "$download_path" ]] || mkdir -p "$download_path"
+
+    printf '* Fetching SHA256 digest for %s from GitHub API...\n' "$asset"
+    local expected_sha256
+    expected_sha256="$(fetch_asset_sha256 "$release_tag" "$url")"
+
+    printf '* Downloading %s release %s...\n' "$TOOL_BIN" "$download_version"
+    curl "${curl_opts[@]}" -o "$tarball" "$url" || fail "Could not download $url"
+
+    if [[ -n "$expected_sha256" ]]; then
+      verify_sha256 "$tarball" "$expected_sha256"
+    fi
+
+    printf '* Extracting %s release %s...\n' "$TOOL_BIN" "$download_version"
+    tar -xzf "$tarball" -C "$download_path" || fail "Could not extract $tarball"
+
+    rm -f "$tarball"
+  ) || (
+    rm -rf "$download_path"
+    fail "An error occurred while downloading $TOOL_NAME $download_version."
+  )
+}
+
+download "$ASDF_INSTALL_TYPE" "$ASDF_INSTALL_VERSION" "$ASDF_DOWNLOAD_PATH"

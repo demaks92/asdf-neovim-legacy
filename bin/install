@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# shellcheck source=../lib/utils.bash
+. "$(dirname "$0")/../lib/utils.bash"
+
+install() {
+  local -r install_type="$1"
+  local -r download_path="$2"
+  local -r version="$3"
+  local -r install_path="$4"
+
+  if [[ "$install_type" != 'version' ]]; then
+    fail "plugin supports release installs only"
+  fi
+
+  local -r release_file="$install_path/bin/$TOOL_BIN"
+
+  cleanup() {
+    local -r rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+      rm -rf "$install_path"
+      fail "An error occurred while installing $TOOL_BIN $version"
+    fi
+  }
+  trap cleanup EXIT
+
+  local release_root
+  if [[ -x "$download_path/bin/$TOOL_BIN" ]]; then
+    release_root="$download_path"
+  else
+    release_root=$(find "$download_path" -mindepth 1 -maxdepth 1 -type d -name "$TOOL_BIN-*" -print -quit)
+  fi
+
+  [[ -n "$release_root" ]] || fail "Could not find extracted $TOOL_BIN release in $download_path"
+
+  [[ -d "$install_path" ]] || mkdir -p "$install_path"
+  cp -R "$release_root"/. "$install_path"/
+  chmod +x "$release_file"
+
+  [[ -x "$release_file" ]] || fail "Expected $release_file to be executable."
+
+  printf 'asdf-%s %s installation was successful!\n' "$TOOL_NAME" "$version"
+}
+
+install "$ASDF_INSTALL_TYPE" "$ASDF_DOWNLOAD_PATH" "$ASDF_INSTALL_VERSION" "$ASDF_INSTALL_PATH"
