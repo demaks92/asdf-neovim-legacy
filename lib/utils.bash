@@ -23,7 +23,7 @@ resolve_release_tag() {
   local -r version="$1"
 
   case "$version" in
-    stable | v*)
+    stable | nightly | v*)
       printf '%s' "$version"
       ;;
     *)
